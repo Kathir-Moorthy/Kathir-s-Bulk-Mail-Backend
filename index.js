@@ -99,15 +99,28 @@ const agenda = new Agenda({
 });
 
 agenda.define("send emails", async (job) => {
-  const { msg, emailList, senderEmail, subject, attachmentFile } = job.attrs.data;
-  await sendEmails({
-    msg,
-    emailList,
-    senderEmail,
-    subject,
-    attachmentFile,
-  });
-  console.log("Scheduled emails sent successfully.");
+  const { msg, emailList, senderEmail, subject, attachmentPath, attachmentName } = job.attrs.data;
+  const attachmentFile = attachmentPath
+    ? { filename: attachmentName, path: attachmentPath }
+    : null;
+
+  try {
+    await sendEmails({
+      msg,
+      emailList,
+      senderEmail,
+      subject,
+      attachmentFile,
+    });
+    console.log("Scheduled emails sent successfully.");
+
+    // Clean up the attachment file if it exists
+    if (attachmentPath) {
+      fs.unlinkSync(attachmentPath);
+    }
+  } catch (error) {
+    console.error("Error in scheduled email job:", error.message);
+  }
 });
 
 (async () => {
@@ -146,7 +159,8 @@ app.post("/sendemail", upload.single("attachment"), async (req, res) => {
         emailList: parsedEmailList,
         senderEmail,
         subject,
-        attachmentFile,
+        attachmentPath: attachmentFile?.path || null,
+        attachmentName: attachmentFile?.filename || null,
       });
 
       console.log("Email scheduled successfully.");
