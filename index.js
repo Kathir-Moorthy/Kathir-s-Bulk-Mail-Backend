@@ -4,21 +4,13 @@ const nodemailer = require("nodemailer");
 const mongoose = require("mongoose");
 const multer = require("multer");
 const fs = require("fs");
-const path = require("path");
-const schedule = require("node-schedule");
+const schedule = require("node-schedule"); // Ensure node-schedule is correctly imported
 require("dotenv").config();
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
-
-// Ensure 'uploads' folder exists
-const uploadsDir = path.join(__dirname, "uploads");
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir);
-  console.log("Uploads folder created.");
-}
 
 // Set up Multer for file uploads
 const upload = multer({ dest: "uploads/" });
@@ -45,7 +37,7 @@ const credentialSchema = new mongoose.Schema(
     user: String,
     pass: String,
   },
-  { collection: "bulkmail" }
+  { collection: "bulkmail" } //The "bulkmail" collection
 );
 
 const Credential = mongoose.model("Credential", credentialSchema);
@@ -161,25 +153,7 @@ app.post("/sendemail", upload.single("attachment"), async (req, res) => {
   }
 });
 
-// Clean up leftover files on server start (optional)
-fs.readdir(uploadsDir, (err, files) => {
-  if (err) {
-    console.error("Error reading uploads directory:", err.message);
-    return;
-  }
-  files.forEach((file) => {
-    const filePath = path.join(uploadsDir, file);
-    fs.unlink(filePath, (err) => {
-      if (err) {
-        console.error(`Failed to delete file ${file}:`, err.message);
-      }
-    });
-  });
-  console.log("Cleaned up leftover uploaded files on server start.");
-});
-
-// Start the server
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5000; // Use the dynamic port or fallback to 5000 for local dev
 app.listen(PORT, () => {
   console.log(`Server started on port ${PORT}`);
 });
