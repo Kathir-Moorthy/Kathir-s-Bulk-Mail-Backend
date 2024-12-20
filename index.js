@@ -37,7 +37,7 @@ const credentialSchema = new mongoose.Schema(
     user: String,
     pass: String,
   },
-  { collection: "bulkmail" } //The "bulkmail" collection
+  { collection: "bulkmail" } // Use the existing "bulkmail" collection
 );
 
 const Credential = mongoose.model("Credential", credentialSchema);
@@ -153,7 +153,8 @@ app.post("/sendemail", upload.single("attachment"), async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 5000; // Use the dynamic port or fallback to 5000 for local dev
+// Start the server
+const PORT = 5000;
 app.listen(PORT, () => {
   console.log(`Server started on port ${PORT}`);
 });
