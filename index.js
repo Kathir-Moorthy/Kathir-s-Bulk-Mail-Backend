@@ -4,7 +4,7 @@ const nodemailer = require("nodemailer");
 const mongoose = require("mongoose");
 const multer = require("multer");
 const fs = require("fs");
-const schedule = require("node-schedule"); // Ensure node-schedule is correctly imported
+const Agenda = require("agenda"); // Import Agenda
 require("dotenv").config();
 
 const app = express();
@@ -93,6 +93,28 @@ const sendEmails = async ({ msg, emailList, senderEmail, subject, attachmentFile
   }
 };
 
+// Agenda setup
+const agenda = new Agenda({
+  db: { address: mongoURI, collection: "scheduledJobs" },
+});
+
+agenda.define("send emails", async (job) => {
+  const { msg, emailList, senderEmail, subject, attachmentFile } = job.attrs.data;
+  await sendEmails({
+    msg,
+    emailList,
+    senderEmail,
+    subject,
+    attachmentFile,
+  });
+  console.log("Scheduled emails sent successfully.");
+});
+
+(async () => {
+  await agenda.start();
+  console.log("Agenda job scheduler started.");
+})();
+
 // Async route to handle email sending with or without scheduling
 app.post("/sendemail", upload.single("attachment"), async (req, res) => {
   const { msg, emailList, senderEmail, subject, schedule: isScheduled, scheduleDate, scheduleTime } = req.body;
@@ -119,19 +141,12 @@ app.post("/sendemail", upload.single("attachment"), async (req, res) => {
         return res.status(400).json({ success: false, message: "Invalid schedule date or time." });
       }
 
-      schedule.scheduleJob(scheduleDateTime, async () => {
-        try {
-          await sendEmails({
-            msg,
-            emailList: parsedEmailList,
-            senderEmail,
-            subject,
-            attachmentFile,
-          });
-          console.log("Scheduled emails sent successfully.");
-        } catch (error) {
-          console.error("Error sending scheduled emails:", error.message);
-        }
+      await agenda.schedule(scheduleDateTime, "send emails", {
+        msg,
+        emailList: parsedEmailList,
+        senderEmail,
+        subject,
+        attachmentFile,
       });
 
       console.log("Email scheduled successfully.");
