@@ -153,8 +153,7 @@ app.post("/sendemail", upload.single("attachment"), async (req, res) => {
   }
 });
 
-// Start the server
-const PORT = 5000;
+const PORT = process.env.PORT || 5000; // Use the dynamic port or fallback to 5000 for local dev
 app.listen(PORT, () => {
   console.log(`Server started on port ${PORT}`);
 });
