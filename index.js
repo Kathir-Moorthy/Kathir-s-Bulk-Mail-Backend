@@ -4,7 +4,7 @@ const nodemailer = require("nodemailer");
 const mongoose = require("mongoose");
 const multer = require("multer");
 const fs = require("fs");
-const schedule = require("node-schedule"); // Ensure node-schedule is correctly imported
+const Agenda = require("agenda");
 require("dotenv").config();
 
 const app = express();
@@ -16,14 +16,11 @@ app.use(express.json());
 const upload = multer({ dest: "uploads/" });
 
 // MongoDB Connection
-const mongoURI = `mongodb+srv://${process.env.MONGO_USERNAME}:${process.env.MONGO_PASSWORD}@cluster0.ogfb5.mongodb.net/passkey?retryWrites=true&w=majority&appName=Cluster0`;
+const mongoURI = `mongodb+srv://${process.env.MONGO_USERNAME}:${process.env.MONGO_PASSWORD}@cluster0.ogfb5.mongodb.net/passkey?retryWrites=true&w=majority`;
 
 // Connect to MongoDB
 mongoose
-  .connect(mongoURI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  })
+  .connect(mongoURI)
   .then(() => {
     console.log("Connected to MongoDB");
   })
@@ -37,7 +34,7 @@ const credentialSchema = new mongoose.Schema(
     user: String,
     pass: String,
   },
-  { collection: "bulkmail" } // Use the existing "bulkmail" collection
+  { collection: "bulkmail" }
 );
 
 const Credential = mongoose.model("Credential", credentialSchema);
@@ -45,11 +42,11 @@ const Credential = mongoose.model("Credential", credentialSchema);
 // Global transporter variable
 let transporter;
 
-// Fetch credentials and initialize the transporter
+// Initialize the transporter
 const initializeTransporter = async () => {
   try {
     const data = await Credential.find();
-    if (data.length === 0) {
+    if (!data.length) {
       console.error("No credentials found in the database.");
       return;
     }
@@ -67,7 +64,6 @@ const initializeTransporter = async () => {
   }
 };
 
-// Call this function on server start
 initializeTransporter();
 
 // Function to send emails
@@ -87,17 +83,51 @@ const sendEmails = async ({ msg, emailList, senderEmail, subject, attachmentFile
     await transporter.sendMail(mailOptions);
   }
 
-  // Clean up the uploaded file
+  // Cleanup uploaded file
   if (attachmentFile && attachmentFile.path) {
     fs.unlinkSync(attachmentFile.path);
   }
 };
 
-// Async route to handle email sending with or without scheduling
+// Agenda setup for scheduling
+const agenda = new Agenda({
+  db: { address: mongoURI, collection: "scheduledJobs" },
+});
+
+agenda.define("send emails", async (job) => {
+  const { msg, emailList, senderEmail, subject, attachmentPath, attachmentName } = job.attrs.data;
+  const attachmentFile = attachmentPath
+    ? { filename: attachmentName, path: attachmentPath }
+    : null;
+
+  try {
+    await sendEmails({
+      msg,
+      emailList,
+      senderEmail,
+      subject,
+      attachmentFile,
+    });
+    console.log("Scheduled emails sent successfully.");
+
+    if (attachmentPath) {
+      fs.unlinkSync(attachmentPath);
+    }
+  } catch (error) {
+    console.error("Error in scheduled email job:", error.message);
+  }
+});
+
+(async () => {
+  await agenda.start();
+  console.log("Agenda job scheduler started.");
+})();
+
+// Route to send email or schedule it
 app.post("/sendemail", upload.single("attachment"), async (req, res) => {
   const { msg, emailList, senderEmail, subject, schedule: isScheduled, scheduleDate, scheduleTime } = req.body;
 
-  if (!msg || !emailList || emailList.length === 0 || !senderEmail || !subject) {
+  if (!msg || !emailList || !senderEmail || !subject) {
     return res.status(400).json({ success: false, message: "Required fields are missing." });
   }
 
@@ -107,31 +137,23 @@ app.post("/sendemail", upload.single("attachment"), async (req, res) => {
 
   try {
     const parsedEmailList = JSON.parse(emailList);
-
     const attachmentFile = req.file
       ? { filename: req.file.originalname, path: req.file.path }
       : null;
 
     if (isScheduled === "true" && scheduleDate && scheduleTime) {
       const scheduleDateTime = new Date(`${scheduleDate}T${scheduleTime}`);
-
       if (isNaN(scheduleDateTime.getTime())) {
         return res.status(400).json({ success: false, message: "Invalid schedule date or time." });
       }
 
-      schedule.scheduleJob(scheduleDateTime, async () => {
-        try {
-          await sendEmails({
-            msg,
-            emailList: parsedEmailList,
-            senderEmail,
-            subject,
-            attachmentFile,
-          });
-          console.log("Scheduled emails sent successfully.");
-        } catch (error) {
-          console.error("Error sending scheduled emails:", error.message);
-        }
+      await agenda.schedule(scheduleDateTime, "send emails", {
+        msg,
+        emailList: parsedEmailList,
+        senderEmail,
+        subject,
+        attachmentPath: attachmentFile?.path || null,
+        attachmentName: attachmentFile?.filename || null,
       });
 
       console.log("Email scheduled successfully.");
@@ -154,7 +176,7 @@ app.post("/sendemail", upload.single("attachment"), async (req, res) => {
 });
 
 // Start the server
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server started on port ${PORT}`);
 });
